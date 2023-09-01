@@ -1,5 +1,11 @@
 package com.faforever.moderatorclient.ui.domain;
-
+import com.faforever.commons.api.dto.BanLevel;
+import com.faforever.commons.api.dto.BanStatus;
+import javafx.beans.binding.Bindings;
+import javafx.beans.property.ObjectProperty;
+import javafx.beans.property.SimpleStringProperty;
+import javafx.beans.property.StringProperty;
+import javafx.collections.ObservableList;
 import com.faforever.commons.api.dto.BanLevel;
 import com.faforever.commons.api.dto.BanStatus;
 import javafx.beans.binding.Bindings;
@@ -14,6 +20,7 @@ import javafx.collections.ObservableSet;
 import java.time.OffsetDateTime;
 
 public class PlayerFX extends AbstractEntityFX {
+
     private final StringProperty login;
     private final StringProperty email;
     private final StringProperty userAgent;
@@ -42,7 +49,6 @@ public class PlayerFX extends AbstractEntityFX {
         uniqueIds = FXCollections.observableSet();
         accountLinks = FXCollections.observableSet();
     }
-
 
     public String getLogin() {
         return login.get();
@@ -83,6 +89,8 @@ public class PlayerFX extends AbstractEntityFX {
     public String getRecentIpAddress() {
         return recentIpAddress.get();
     }
+
+
 
     public void setRecentIpAddress(String recentIpAddress) {
         this.recentIpAddress.set(recentIpAddress);

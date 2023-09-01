@@ -12,6 +12,7 @@ import com.faforever.moderatorclient.ui.main_window.LadderMapPoolController;
 import com.faforever.moderatorclient.ui.main_window.MapVaultController;
 import com.faforever.moderatorclient.ui.main_window.ModVaultController;
 import com.faforever.moderatorclient.ui.main_window.RecentActivityController;
+import com.faforever.moderatorclient.ui.main_window.SettingsController;
 import com.faforever.moderatorclient.ui.main_window.TutorialController;
 import com.faforever.moderatorclient.ui.main_window.UserGroupsController;
 import com.faforever.moderatorclient.ui.main_window.UserManagementController;
@@ -25,13 +26,14 @@ import javafx.scene.image.Image;
 import javafx.stage.Stage;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.compress.utils.Lists;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
 
+import java.io.*;
 import java.text.MessageFormat;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Optional;
+import java.util.*;
+import java.util.concurrent.ExecutionException;
 
 @Component
 @Slf4j
@@ -53,7 +55,9 @@ public class MainController implements Controller<TabPane> {
     public Tab messagesTab;
     public Tab reportTab;
     public Tab permissionTab;
+    public Tab settingsTab;
 
+    private SettingsController settingsController;
     private ModerationReportController moderationReportController;
     private UserManagementController userManagementController;
     private LadderMapPoolController ladderMapPoolController;
@@ -67,12 +71,30 @@ public class MainController implements Controller<TabPane> {
     private TutorialController tutorialController;
     private MessagesController messagesController;
     private UserGroupsController userGroupsController;
-    private final Map<Tab, Boolean> dataLoadingState = new HashMap<>();
 
+    public List<Tab> tabs = Lists.newArrayList();
+    private final Map<Tab, Boolean> dataLoadingState = new HashMap<>();
     private final FafApiCommunicationService communicationService;
+    public static final String CONFIGURATION_FOLDER = "ConfigurationModerationToolFAF";
 
     @Override
     public TabPane getRoot() {
+        Properties config = new Properties();
+        root.getSelectionModel().select(userManagementTab); // Set a default tab
+        try (InputStream input = new FileInputStream(CONFIGURATION_FOLDER + "/config.properties")) {
+            config.load(input);
+            String userChoiceDefaultTab = config.getProperty("user.choice.tab");
+            for (Tab tab : tabs) {
+                if (!tab.getId().equals(userChoiceDefaultTab)) continue;
+                root.getSelectionModel().select(tab);
+                break;
+            }
+        } catch (IOException e) {
+            log.debug(String.valueOf(e));
+        }
+
+        if (checkPermissionForTab(reportTab, GroupPermission.ROLE_ADMIN_MODERATION_REPORT)) moderationReportController.onRefreshAllReports();
+
         return root;
     }
 
@@ -87,19 +109,31 @@ public class MainController implements Controller<TabPane> {
     }
 
     private void initializeAfterLogin() {
-        initUserManagementTab();
-        initMatchmakerMapPoolTab();
-        initMapVaultTab();
-        initModVaultTab();
+        tabs.addAll(Arrays.asList(avatarsTab, banTab, domainBlacklistTab, mapVaultTab, matchmakerMapPoolTab, messagesTab, modVaultTab, permissionTab, recentActivityTab, reportTab, settingsTab, tutorialTab, userManagementTab, votingTab));
         initAvatarTab();
-        initRecentActivityTab();
-        initDomainBlacklistTab();
         initBanTab();
-        initVotingTab();
+        initDomainBlacklistTab();
+        initMapVaultTab();
+        initMatchmakerMapPoolTab();
         initMessagesTab();
-        initTutorialTab();
-        initReportTab();
+        initModVaultTab();
         initPermissionTab();
+        initRecentActivityTab();
+        initReportTab();
+        initSettingsTab(getTabs());
+        initTutorialTab();
+        initUserManagementTab();
+        initVotingTab();
+    }
+    private void initSettingsTab(List<Tab> tabs) {
+        settingsController = uiService.loadFxml("ui/main_window/settingsTab.fxml");
+        settingsController.setTabs(tabs);
+        settingsController.initTabStuff();
+        settingsTab.setContent(settingsController.getRoot());
+    }
+
+    public List<Tab> getTabs() {
+        return tabs;
     }
 
     private void initLoading(Tab tab, Runnable loadingFunction) {
@@ -109,9 +143,9 @@ public class MainController implements Controller<TabPane> {
                 dataLoadingState.put(tab, true);
                 loadingFunction.run();
             }
+
         });
     }
-
     private void initUserManagementTab() {
         if (checkPermissionForTab(userManagementTab, GroupPermission.ROLE_READ_ACCOUNT_PRIVATE_DETAILS,
                 GroupPermission.ROLE_ADMIN_ACCOUNT_NOTE, GroupPermission.ROLE_ADMIN_ACCOUNT_BAN,
@@ -218,13 +252,12 @@ public class MainController implements Controller<TabPane> {
 
         Stage loginDialog = new Stage();
         loginDialog.setOnCloseRequest(event -> System.exit(0));
-        loginDialog.setTitle("FAF Moderator Client");
-        loginDialog.getIcons().add(new Image(this.getClass().getResourceAsStream("/media/favicon.png")));
+        loginDialog.setTitle("Login - magge's modified Mordor");
+        loginDialog.getIcons().add(new Image(Objects.requireNonNull(this.getClass().getResourceAsStream("/media/favicon.png"))));
         Scene scene = new Scene(loginController.getRoot());
-        scene.getStylesheets().add(getClass().getResource("/style/main.css").toExternalForm());
+        scene.getStylesheets().add(Objects.requireNonNull(getClass().getResource("/style/main.css")).toExternalForm());
         loginDialog.setScene(scene);
         loginDialog.showAndWait();
-
         initializeAfterLogin();
     }
 

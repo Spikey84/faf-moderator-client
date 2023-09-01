@@ -17,7 +17,7 @@ public abstract class AccountLinkMapper {
 
     public abstract List<AccountLink> mapToDto(List<AccountLinkFx> fxBeanList);
 
-	public abstract Set<AccountLinkFx> mapToFX(Set<AccountLink> dtoList);
+    public abstract Set<AccountLinkFx> mapToFX(Set<AccountLink> dtoList);
 
-	public abstract Set<AccountLink> mapToDto(Set<AccountLinkFx> fxBeanList);
+    public abstract Set<AccountLink> mapToDto(Set<AccountLinkFx> fxBeanList);
 }

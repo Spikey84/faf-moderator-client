@@ -3,6 +3,7 @@ package com.faforever.moderatorclient.ui;
 import com.faforever.commons.api.dto.BanStatus;
 import com.faforever.moderatorclient.api.domain.BanService;
 import com.faforever.moderatorclient.ui.domain.BanInfoFX;
+import com.faforever.moderatorclient.ui.domain.UniqueIdFx;
 import javafx.application.Platform;
 import javafx.beans.InvalidationListener;
 import javafx.collections.FXCollections;
@@ -17,7 +18,6 @@ import javafx.stage.Stage;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
-
 import java.util.Collections;
 import java.util.List;
 import java.util.function.Supplier;
@@ -28,7 +28,6 @@ import java.util.function.Supplier;
 public class BansController implements Controller<HBox> {
     private final UiService uiService;
     private final BanService banService;
-
     public HBox root;
     public ToggleGroup filterGroup;
     public TextField filter;
@@ -78,7 +77,6 @@ public class BansController implements Controller<HBox> {
             log.info("Could not delete ban, there was no message selected");
             return;
         }
-
         openBanDialog(selectedItem, false);
     }
 

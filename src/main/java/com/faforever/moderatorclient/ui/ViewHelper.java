@@ -1,5 +1,7 @@
 package com.faforever.moderatorclient.ui;
 
+import java.io.*;
+import java.time.Duration;
 import com.faforever.commons.api.dto.BanDurationType;
 import com.faforever.commons.api.dto.BanLevel;
 import com.faforever.commons.api.dto.BanStatus;
@@ -16,6 +18,7 @@ import com.faforever.moderatorclient.api.domain.VotingService;
 import com.faforever.moderatorclient.ui.caches.LargeThumbnailCache;
 import com.faforever.moderatorclient.ui.data_cells.TextAreaTableCell;
 import com.faforever.moderatorclient.ui.data_cells.UrlImageViewTableCell;
+import com.faforever.moderatorclient.ui.data_cells.UrlImageViewTableCellSync;
 import com.faforever.moderatorclient.ui.domain.AccountLinkFx;
 import com.faforever.moderatorclient.ui.domain.AvatarAssignmentFX;
 import com.faforever.moderatorclient.ui.domain.AvatarFX;
@@ -40,29 +43,14 @@ import com.faforever.moderatorclient.ui.domain.UserNoteFX;
 import com.faforever.moderatorclient.ui.domain.VotingChoiceFX;
 import com.faforever.moderatorclient.ui.domain.VotingQuestionFX;
 import com.faforever.moderatorclient.ui.domain.VotingSubjectFX;
+import com.faforever.moderatorclient.ui.main_window.LadderMapPoolController;
 import javafx.beans.binding.Bindings;
 import javafx.beans.property.SimpleIntegerProperty;
 import javafx.beans.property.SimpleObjectProperty;
 import javafx.beans.property.SimpleStringProperty;
 import javafx.collections.ObservableList;
 import javafx.scene.Scene;
-import javafx.scene.control.Alert;
-import javafx.scene.control.Button;
-import javafx.scene.control.ButtonType;
-import javafx.scene.control.ContextMenu;
-import javafx.scene.control.Control;
-import javafx.scene.control.Label;
-import javafx.scene.control.MenuItem;
-import javafx.scene.control.SelectionMode;
-import javafx.scene.control.TableCell;
-import javafx.scene.control.TableColumn;
-import javafx.scene.control.TablePosition;
-import javafx.scene.control.TableView;
-import javafx.scene.control.TextArea;
-import javafx.scene.control.Tooltip;
-import javafx.scene.control.TreeItem;
-import javafx.scene.control.TreeTableColumn;
-import javafx.scene.control.TreeTableView;
+import javafx.scene.control.*;
 import javafx.scene.control.cell.CheckBoxTableCell;
 import javafx.scene.control.cell.PropertyValueFactory;
 import javafx.scene.control.cell.TreeItemPropertyValueFactory;
@@ -89,21 +77,13 @@ import org.slf4j.Logger;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
-import java.io.PrintWriter;
-import java.io.StringWriter;
 import java.net.URL;
 import java.text.MessageFormat;
-import java.time.Duration;
+import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.FormatStyle;
-import java.util.Comparator;
-import java.util.HashMap;
-import java.util.Locale;
-import java.util.Optional;
-import java.util.Set;
-import java.util.TimeZone;
-import java.util.TreeSet;
+import java.util.*;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
@@ -162,7 +142,13 @@ public class ViewHelper {
             Object o = supplier.get();
 
             if (o != null) {
-                content.putString(o.toString());
+                if(o.toString().charAt(0) == '[' && o.toString().charAt(o.toString().length()-1) == ']') {
+                    String modifiedString = o.toString().substring(1, o.toString().length()-1);
+                    modifiedString = modifiedString.replace(", ", "\n");
+                    content.putString(modifiedString);
+                }else{
+                    content.putString(o.toString());
+                }
                 clipboard.setContent(content);
             }
         });
@@ -176,7 +162,7 @@ public class ViewHelper {
         TableColumn<AvatarFX, String> idColumn = new TableColumn<>("ID");
         idColumn.setCellValueFactory(o -> o.getValue().idProperty());
         idColumn.setComparator(Comparator.comparingInt(Integer::parseInt));
-        idColumn.setMinWidth(50);
+        idColumn.setMinWidth(25);
         tableView.getColumns().add(idColumn);
         extractors.put(idColumn, AvatarFX::getId);
 
@@ -188,7 +174,7 @@ public class ViewHelper {
 
         TableColumn<AvatarFX, String> tooltipColumn = new TableColumn<>("Tooltip");
         tooltipColumn.setCellValueFactory(o -> o.getValue().tooltipProperty());
-        tooltipColumn.setMinWidth(50);
+        tooltipColumn.setMinWidth(250);
         tableView.getColumns().add(tooltipColumn);
         extractors.put(tooltipColumn, AvatarFX::getTooltip);
 
@@ -199,7 +185,7 @@ public class ViewHelper {
 
         TableColumn<AvatarFX, String> urlColumn = new TableColumn<>("URL");
         urlColumn.setCellValueFactory(o -> o.getValue().urlProperty());
-        urlColumn.setMinWidth(50);
+        urlColumn.setMinWidth(500);
         tableView.getColumns().add(urlColumn);
         extractors.put(urlColumn, AvatarFX::getUrl);
 
@@ -221,7 +207,7 @@ public class ViewHelper {
         });
     }
 
-    public static void buildAvatarAssignmentTableView(TableView<AvatarAssignmentFX> tableView, ObservableList<AvatarAssignmentFX> data) {
+    public static void buildAvatarAssignmentTableView(TableView<AvatarAssignmentFX> tableView, ObservableList<AvatarAssignmentFX> data, @Nullable Consumer<AvatarAssignmentFX> onRemove) {
         tableView.setItems(data);
         HashMap<TableColumn<AvatarAssignmentFX, ?>, Function<AvatarAssignmentFX, ?>> extractors = new HashMap<>();
 
@@ -265,6 +251,27 @@ public class ViewHelper {
         assignedAtColumn.setMinWidth(180);
         tableView.getColumns().add(assignedAtColumn);
 
+        TableColumn<AvatarAssignmentFX, AvatarAssignmentFX> removeColumn = new TableColumn<>("Remove");
+        removeColumn.setMinWidth(90);
+        removeColumn.setCellValueFactory(param -> new SimpleObjectProperty<>(param.getValue()));
+        removeColumn.setCellFactory(param -> new TableCell<AvatarAssignmentFX, AvatarAssignmentFX>() {
+
+            @Override
+            protected void updateItem(AvatarAssignmentFX item, boolean empty) {
+                super.updateItem(item, empty);
+                if (!empty) {
+                    Button button = new Button("Remove");
+                    button.setOnMouseClicked(event -> onRemove.accept(item));
+                    button.setTextFill(Color.rgb(200, 10, 10));
+
+                    setGraphic(button);
+                    return;
+                }
+                setGraphic(null);
+            }
+        });
+        tableView.getColumns().add(removeColumn);
+
         applyCopyContextMenus(tableView, extractors);
     }
 
@@ -297,8 +304,13 @@ public class ViewHelper {
             return switch (banInfo.getDuration()) {
                 case PERMANENT -> "PERMANENT";
                 case TEMPORARY -> {
-                    Duration duration = Duration.between(banInfo.getCreateTime(), banInfo.getExpiresAt());
-                    yield "%s days, %s hours".formatted(duration.toDays(), duration.toHoursPart());
+                    Instant now = Instant.now();
+                    Duration totalDuration = Duration.between(banInfo.getCreateTime(), banInfo.getExpiresAt());
+                    Duration remainingDuration = Duration.between(now, banInfo.getExpiresAt());
+                    long totalDays = totalDuration.toDays();
+                    long remainingDays = remainingDuration.toDays();
+                    long remainingHours = remainingDuration.toHoursPart();
+                    yield "%s days (%s days, %s hours)".formatted(totalDays, remainingDays, remainingHours);
                 }
             };
         }, o.getValue().durationProperty()));
@@ -528,7 +540,6 @@ public class ViewHelper {
         };
     }
 
-
     public static void loadForceRenameDialog(UiService uiService, PlayerFX playerFX) {
         ForceRenameController forceRenameController = uiService.loadFxml("ui/forceRename.fxml");
         forceRenameController.setPlayer(playerFX);
@@ -536,6 +547,35 @@ public class ViewHelper {
         newCategoryDialog.setTitle("Force rename");
         newCategoryDialog.setScene(new Scene(forceRenameController.getRoot()));
         newCategoryDialog.showAndWait();
+    }
+
+    private static void writeToFile(String fileName, String element) {
+        try {
+            Scanner scanner = new Scanner(new File(fileName));
+            try (FileWriter fw = new FileWriter(fileName, true)) {
+                boolean alreadyExists = false;
+                while (scanner.hasNextLine()) {
+                    try {
+                        String line = scanner.nextLine();
+                        if (line.equals(element)) {
+                            alreadyExists = true;
+                            break;
+                        }
+                    } catch (Exception e) {
+                        log.debug(String.valueOf(e));
+                    }
+                }
+                if (alreadyExists) {
+                    log.debug(element + " already exists.");
+                } else {
+                    fw.write(element + "\n");
+                    fw.flush();
+                    log.debug(element + " was added.");
+                }
+            }
+        } catch (IOException e) {
+            log.debug(String.valueOf(e));
+        }
     }
 
     /**
@@ -561,6 +601,28 @@ public class ViewHelper {
         nameColumn.setMinWidth(150);
         tableView.getColumns().add(nameColumn);
         extractors.put(nameColumn, PlayerFX::getLogin);
+
+        if (onAddBan != null) {
+            TableColumn<PlayerFX, PlayerFX> banOptionColumn = new TableColumn<>("Ban");
+            banOptionColumn.setCellValueFactory(param -> new SimpleObjectProperty<>(param.getValue()));
+            banOptionColumn.setCellFactory(param -> new TableCell<>() {
+
+                @Override
+                protected void updateItem(PlayerFX item, boolean empty) {
+                    super.updateItem(item, empty);
+                    if (!empty) {
+                        if (!item.isBannedGlobally()) {
+                            Button button = new Button("Add ban");
+                            button.setOnMouseClicked(event -> onAddBan.accept(item));
+                            setGraphic(button);
+                            return;
+                        }
+                    }
+                    setGraphic(null);
+                }
+            });
+            tableView.getColumns().add(banOptionColumn);
+        }
 
         TableColumn<PlayerFX, String> emailColumn = new TableColumn<>("Email");
         emailColumn.setCellValueFactory(o -> o.getValue().emailProperty());
@@ -604,27 +666,6 @@ public class ViewHelper {
         updateTimeColumn.setMinWidth(160);
         tableView.getColumns().add(updateTimeColumn);
 
-        if (onAddBan != null) {
-            TableColumn<PlayerFX, PlayerFX> banOptionColumn = new TableColumn<>("Ban");
-            banOptionColumn.setCellValueFactory(param -> new SimpleObjectProperty<>(param.getValue()));
-            banOptionColumn.setCellFactory(param -> new TableCell<>() {
-
-                @Override
-                protected void updateItem(PlayerFX item, boolean empty) {
-                    super.updateItem(item, empty);
-                    if (!empty) {
-                        if (!item.isBannedGlobally()) {
-                            Button button = new Button("Add ban");
-                            button.setOnMouseClicked(event -> onAddBan.accept(item));
-                            setGraphic(button);
-                            return;
-                        }
-                    }
-                    setGraphic(null);
-                }
-            });
-            tableView.getColumns().add(banOptionColumn);
-        }
 
         TableColumn<PlayerFX, String> hashColumn = new TableColumn<>("Hash");
         hashColumn.setCellValueFactory(o -> Bindings.createStringBinding(() ->
@@ -671,7 +712,7 @@ public class ViewHelper {
         tableView.getColumns().add(manufacturerColumn);
         extractors.put(manufacturerColumn, playerFX -> playerFX.getUniqueIds().stream().map(UniqueIdFx::getManufacturer).collect(Collectors.toList()));
 
-        TableColumn<PlayerFX, String> cpuNameColumn = new TableColumn<>("Cpu Name");
+        TableColumn<PlayerFX, String> cpuNameColumn = new TableColumn<>("CPU Name");
         cpuNameColumn.setCellValueFactory(o -> Bindings.createStringBinding(() ->
                         o.getValue().getUniqueIds().stream().map(UniqueIdFx::getName)
                                 .collect(Collectors.joining("\n")),
@@ -729,6 +770,49 @@ public class ViewHelper {
             );
         });
 
+        MenuItem menuItemAddToBanPermanentList = new MenuItem("Add to blacklist");
+
+        menuItemAddToBanPermanentList.disableProperty().bind(Bindings.createBooleanBinding(() -> {
+            PlayerFX selectedPlayer = tableView.getSelectionModel().getSelectedItem();
+            return selectedPlayer == null || selectedPlayer.getAccountLinks() == null;
+        }, tableView.getSelectionModel().selectedItemProperty()));
+
+        menuItemAddToBanPermanentList.setOnAction(action -> {
+            PlayerFX playerFX = tableView.getSelectionModel().getSelectedItem();
+            log.debug("[Add to blacklist] Adding: " + playerFX.getRepresentation());
+
+            writeToFile("BlacklistedIP.txt", playerFX.getRecentIpAddress());
+
+            List<String> ListHash = playerFX.getUniqueIds().stream().map(UniqueIdFx::getHash).toList();
+
+            for (String element : ListHash) {
+                log.debug("checking for hash " + element);
+                writeToFile("BlacklistedHash.txt", element);
+            }
+
+            List<String> ListUUID = playerFX.getUniqueIds().stream().map(UniqueIdFx::getUuid).toList();
+
+            for (String element : ListUUID) {
+                log.debug("checking for UUID " + element);
+                writeToFile("BlacklistedUUID.txt", element);
+            }
+
+            List<String> ListMemorySN = playerFX.getUniqueIds().stream().map(UniqueIdFx::getMemorySerialNumber).toList();
+
+            for (String element : ListMemorySN) {
+                log.debug("checking for Memory S/N " + element);
+                writeToFile("BlacklistedMemorySN.txt", element);
+            }
+
+            List<String> VolumeSerialNumber = playerFX.getUniqueIds().stream().map(UniqueIdFx::getVolumeSerialNumber).toList();
+
+            for (String element : VolumeSerialNumber) {
+                log.debug("checking for Volume S/N " + element);
+                writeToFile("BlacklistedVolumeSN.txt", element);
+            }
+        });
+
+
         MenuItem gogLookupMenuItem = new MenuItem("Lookup GogID");
         gogLookupMenuItem.disableProperty().bind(Bindings.createBooleanBinding(() -> {
             PlayerFX selectedPlayer = tableView.getSelectionModel().getSelectedItem();
@@ -741,8 +825,8 @@ public class ViewHelper {
             );
         });
 
+
         contextMenu.getItems().add(steamLookupMenuItem);
-        contextMenu.getItems().add(gogLookupMenuItem);
 
         if (communicationService.hasPermission(ROLE_ADMIN_ACCOUNT_NAME_CHANGE)) {
             MenuItem forceRenameMenuItem = new MenuItem("Rename");
@@ -751,6 +835,8 @@ public class ViewHelper {
                 onForceRename.accept(playerFX);
             });
             contextMenu.getItems().add(forceRenameMenuItem);
+            contextMenu.getItems().add(gogLookupMenuItem);
+            contextMenu.getItems().add(menuItemAddToBanPermanentList);
         }
     }
 
@@ -774,7 +860,7 @@ public class ViewHelper {
 
         TableColumn<AvatarAssignmentFX, String> previewColumn = new TableColumn<>("Preview");
         previewColumn.setCellValueFactory(o -> o.getValue().avatarProperty().get().urlProperty());
-        previewColumn.setCellFactory(param -> new UrlImageViewTableCell<>());
+        previewColumn.setCellFactory(param -> new UrlImageViewTableCellSync<>());
         previewColumn.setMinWidth(50);
         tableView.getColumns().add(previewColumn);
         extractors.put(previewColumn, avatarAssignmentFX -> avatarAssignmentFX.getAvatar().getUrl());
@@ -922,7 +1008,7 @@ public class ViewHelper {
         TableColumn<ModFX, String> idColumn = new TableColumn<>("Mod ID");
         idColumn.setCellValueFactory(o -> o.getValue().idProperty());
         idColumn.setComparator(Comparator.comparingInt(Integer::parseInt));
-        idColumn.setMinWidth(100);
+        idColumn.setMinWidth(60);
         tableView.getColumns().add(idColumn);
         extractors.put(idColumn, ModFX::getId);
 
@@ -932,16 +1018,21 @@ public class ViewHelper {
         tableView.getColumns().add(nameColumn);
         extractors.put(nameColumn, ModFX::getDisplayName);
 
-        TableColumn<ModFX, PlayerFX> uploaderColumn = new TableColumn<>("Uploader");
-        uploaderColumn.setCellValueFactory(o -> o.getValue().uploaderProperty());
-        uploaderColumn.setCellFactory(o -> getPlayerFXTableCell());
-        uploaderColumn.setMinWidth(200);
+        TableColumn<ModFX, String> uploaderColumn = new TableColumn<>("Uploader");
+        uploaderColumn.setCellValueFactory(o -> o.getValue().getUploaderName());
+        uploaderColumn.setMinWidth(150);
         tableView.getColumns().add(uploaderColumn);
-        extractors.put(uploaderColumn, modFX -> modFX.getUploader().getLogin());
+        extractors.put(uploaderColumn, ModFX::getUploaderName);
+
+        TableColumn<ModFX, String> uploaderIDColumn = new TableColumn<>("UploaderID");
+        uploaderIDColumn.setCellValueFactory(o -> o.getValue().getUploaderID());
+        uploaderIDColumn.setMinWidth(80);
+        tableView.getColumns().add(uploaderIDColumn);
+        extractors.put(uploaderIDColumn, ModFX::getUploaderID);
 
         TableColumn<ModFX, String> authorColumn = new TableColumn<>("Author");
         authorColumn.setCellValueFactory(o -> o.getValue().authorProperty());
-        authorColumn.setMinWidth(200);
+        authorColumn.setMinWidth(150);
         tableView.getColumns().add(authorColumn);
         extractors.put(authorColumn, modFX -> modFX.getUploader().getLogin());
 
@@ -990,7 +1081,7 @@ public class ViewHelper {
         };
     }
 
-    public static void buildMapTreeView(TreeTableView<MapTableItemAdapter> mapTreeView) {
+    public static void buildMapTreeView(TreeTableView<MapTableItemAdapter> mapTreeView, @Nullable Consumer<MapTableItemAdapter> removeFavorite, @Nullable Consumer<MapTableItemAdapter> addFavorite,  LadderMapPoolController ladderMapPoolController) {
         TreeTableColumn<MapTableItemAdapter, String> idColumn = new TreeTableColumn<>("ID");
         idColumn.setCellValueFactory(new TreeItemPropertyValueFactory<>("id"));
         idColumn.setComparator(Comparator.comparingInt(Integer::parseInt));
@@ -1001,6 +1092,43 @@ public class ViewHelper {
         nameColumn.setCellValueFactory(new TreeItemPropertyValueFactory<>("nameOrDescription"));
         nameColumn.setMinWidth(300);
         mapTreeView.getColumns().add(nameColumn);
+
+        TreeTableColumn<MapTableItemAdapter, MapTableItemAdapter> favoriteColumn = new TreeTableColumn<>("Favorite");
+        favoriteColumn.setMinWidth(100);
+        favoriteColumn.setCellValueFactory(new TreeItemPropertyValueFactory<>("this"));
+        Callback<TreeTableColumn<MapTableItemAdapter, MapTableItemAdapter>, TreeTableCell<MapTableItemAdapter, MapTableItemAdapter>> cellFactory = new Callback<TreeTableColumn<MapTableItemAdapter, MapTableItemAdapter>, TreeTableCell<MapTableItemAdapter, MapTableItemAdapter>>() {
+            @Override
+            public TreeTableCell<MapTableItemAdapter, MapTableItemAdapter> call(TreeTableColumn<MapTableItemAdapter, MapTableItemAdapter> param) {
+                return new TreeTableCell<MapTableItemAdapter, MapTableItemAdapter>() {
+                    @Override
+                    public void updateItem(MapTableItemAdapter item, boolean empty) {
+                        super.updateItem(item, empty);
+                        if (!empty && item != null && !item.isMapVersion()) {
+                            if (ladderMapPoolController.isMapFavorite(Integer.parseInt(item.getId()))) {
+                                Button button = new Button("Unfavorite");
+                                button.setOnMouseClicked(event -> removeFavorite.accept(item));
+                                button.setTextFill(Color.rgb(200, 10, 10));
+
+                                setGraphic(button);
+                                return;
+                            } else {
+                                Button button = new Button("Favorite");
+                                button.setOnMouseClicked(event -> addFavorite.accept(item));
+                                button.setTextFill(Color.rgb(10, 200, 10));
+
+                                setGraphic(button);
+                                return;
+                            }
+                        }
+                        setGraphic(null);
+                    }
+                };
+            }
+        };
+
+        favoriteColumn.setCellFactory(cellFactory);
+
+        mapTreeView.getColumns().add(favoriteColumn);
 
         TreeTableColumn<MapTableItemAdapter, ComparableVersion> versionColumn = new TreeTableColumn<>("Version");
         versionColumn.setCellValueFactory(new TreeItemPropertyValueFactory<>("version"));
@@ -1028,6 +1156,7 @@ public class ViewHelper {
         mapTreeView.setRoot(rootTreeItem);
         mapTreeView.setShowRoot(false);
     }
+
 
     public static void buildMapFeedTableView(@NotNull TableView<MapVersionFX> tableView, @NotNull ObservableList<MapVersionFX> data, @Nullable Consumer<MapVersionFX> onToggleHide) {
         tableView.setItems(data);
@@ -1855,21 +1984,28 @@ public class ViewHelper {
     public static void buildModerationReportTableView(
             TableView<ModerationReportFX> tableView,
             ObservableList<ModerationReportFX> items,
-            Consumer<ModerationReportFX> onChatLog
+            Consumer<ModerationReportFX> onChatLog,
+            @Nullable Consumer<ModerationReportFX> onMarkCompleted,
+            @Nullable Consumer<ModerationReportFX> onMarkDiscarded
     ) {
+        tableView.getSelectionModel().setSelectionMode(SelectionMode.MULTIPLE);
         tableView.setItems(items);
         tableView.setEditable(true);
         HashMap<TableColumn<ModerationReportFX, ?>, Function<ModerationReportFX, ?>> extractors = new HashMap<>();
 
-        TableColumn<ModerationReportFX, String> idColumn = new TableColumn<>("ID");
+        TableColumn<ModerationReportFX, String> idColumn = new TableColumn<>("Report ID");
         idColumn.setCellValueFactory(o -> o.getValue().idProperty());
         idColumn.setComparator(Comparator.comparingInt(Integer::parseInt));
+        idColumn.setSortable(true);
         tableView.getColumns().add(idColumn);
-        extractors.put(idColumn, ModerationReportFX::getId);
+        tableView.getSortOrder().add(idColumn);
+        idColumn.setSortType(TableColumn.SortType.DESCENDING);
+        tableView.sort();
 
         TableColumn<ModerationReportFX, ModerationReportStatus> statusColumn = new TableColumn<>("Status");
         statusColumn.setCellValueFactory(param -> param.getValue().reportStatusProperty());
         tableView.getColumns().add(statusColumn);
+        statusColumn.setMinWidth(10);
         statusColumn.setCellFactory(new Callback<TableColumn<ModerationReportFX, ModerationReportStatus>, TableCell<ModerationReportFX, ModerationReportStatus>>() {
             @Override
             public TableCell<ModerationReportFX, ModerationReportStatus> call(TableColumn<ModerationReportFX, ModerationReportStatus> param) {
@@ -1884,16 +2020,19 @@ public class ViewHelper {
                         } else {
                             switch (item) {
                                 case AWAITING:
-                                    setStyle("  -fx-background-color: #dcc414;");
+                                    //setStyle("  -fx-background-color: #dcc414;");
+                                    setStyle("-fx-background-color: rgba(220, 196, 20, 0.40);");
                                     break;
                                 case DISCARDED:
-                                    setStyle("-fx-background-color: #9cabab;");
+                                    //setStyle("-fx-background-color: #9cabab;");
+                                    setStyle("-fx-background-color: rgba(156, 171, 171, 0.40);");
                                     break;
                                 case PROCESSING:
-                                    setStyle("-fx-background-color: rgba(56, 56, 255, 0.85);");
+                                    setStyle("-fx-background-color: rgba(56, 56, 255, 0.40);");
                                     break;
                                 case COMPLETED:
-                                    setStyle("-fx-background-color: #5aad58;");
+                                    //setStyle("-fx-background-color: #5aad58;");
+                                    setStyle("-fx-background-color: rgba(90, 173, 88, 0.40);");
                                     break;
                             }
 
@@ -1902,8 +2041,50 @@ public class ViewHelper {
                     }
                 };
             }
+
         });
         extractors.put(statusColumn, ModerationReportFX::getReportStatus);
+
+        TableColumn<ModerationReportFX, ModerationReportFX> markCompletedColumn = new TableColumn<>("Complete");
+        markCompletedColumn.setMinWidth(90);
+        markCompletedColumn.setCellValueFactory(param -> new SimpleObjectProperty<>(param.getValue()));
+        markCompletedColumn.setCellFactory(param -> new TableCell<ModerationReportFX, ModerationReportFX>() {
+
+            @Override
+            protected void updateItem(ModerationReportFX item, boolean empty) {
+                super.updateItem(item, empty);
+                if (!empty) {
+                        Button button = new Button("Complete");
+                        button.setOnMouseClicked(event -> onMarkCompleted.accept(item));
+                        button.setTextFill(Color.rgb(10, 200, 10));
+
+                        setGraphic(button);
+                        return;
+                }
+                setGraphic(null);
+            }
+        });
+        tableView.getColumns().add(markCompletedColumn);
+
+        TableColumn<ModerationReportFX, ModerationReportFX> markDiscardedColumn = new TableColumn<>("Discard");
+        markDiscardedColumn.setMinWidth(75);
+        markDiscardedColumn.setCellValueFactory(param -> new SimpleObjectProperty<>(param.getValue()));
+        markDiscardedColumn.setCellFactory(param -> new TableCell<ModerationReportFX, ModerationReportFX>() {
+
+            @Override
+            protected void updateItem(ModerationReportFX item, boolean empty) {
+                super.updateItem(item, empty);
+                if (!empty) {
+                    Button button = new Button("Discard");
+                    button.setOnMouseClicked(event -> onMarkDiscarded.accept(item));
+                    button.setTextFill(Color.rgb(200, 10, 10));
+                    setGraphic(button);
+                    return;
+                }
+                setGraphic(null);
+            }
+        });
+        tableView.getColumns().add(markDiscardedColumn);
 
         TableColumn<ModerationReportFX, PlayerFX> reporterColumn = new TableColumn<>("Reporter");
         reporterColumn.setCellFactory(tableColumn -> ViewHelper.playerFXCellFactory(tableColumn, PlayerFX::getLogin));
@@ -1912,25 +2093,25 @@ public class ViewHelper {
         tableView.getColumns().add(reporterColumn);
         extractors.put(reporterColumn, reportFx -> reportFx.getReporter().getRepresentation());
 
-        TableColumn<ModerationReportFX, String> reportedUsersColumn = new TableColumn<>("Reported user(s)");
+        TableColumn<ModerationReportFX, String> reportedUsersColumn = new TableColumn<>("Offender");
+        reportedUsersColumn.setMinWidth(100);
         reportedUsersColumn.setCellValueFactory(param -> new SimpleObjectProperty<>(param.getValue().getReportedUsers().stream()
                         .map(PlayerFX::getLogin)
                         .collect(Collectors.joining("\n"))
                 )
         );
-        reportedUsersColumn.setMinWidth(140);
+        reportedUsersColumn.setMinWidth(10);
         tableView.getColumns().add(reportedUsersColumn);
 
-        TableColumn<ModerationReportFX, String> reportDescriptionColumn = new TableColumn<>("Report Description");
-        reportDescriptionColumn.setMinWidth(150);
-        reportDescriptionColumn.setCellValueFactory(param -> param.getValue().reportDescriptionProperty());
+        TableColumn<ModerationReportFX, String> reportDescriptionColumn = new TableColumn<>("Description");
+        reportDescriptionColumn.setPrefWidth(210);
+        reportDescriptionColumn.setCellValueFactory(param -> param.getValue().reportDescriptionShortProperty());
         reportDescriptionColumn.setCellFactory(column -> {
             TableCell<ModerationReportFX, String> cell = new TableCell<>();
             Text text = new Text();
             cell.setGraphic(text);
             cell.setPrefHeight(Control.USE_COMPUTED_SIZE);
-            cell.setWrapText(true);
-            text.wrappingWidthProperty().bind(Bindings.createDoubleBinding(() -> cell.getWidth() - 10.0, cell.widthProperty()));
+            cell.setMaxHeight(2);
             text.textProperty().bind(cell.itemProperty());
             return cell;
         });
@@ -1938,7 +2119,8 @@ public class ViewHelper {
         extractors.put(reportDescriptionColumn, ModerationReportFX::getReportDescription);
 
         TableColumn<ModerationReportFX, String> incidentTimeCodeColumn = new TableColumn<>("Incident Timecode");
-        incidentTimeCodeColumn.setMinWidth(140);
+        incidentTimeCodeColumn.setMinWidth(100);
+        //incidentTimeCodeColumn.setMaxWidth(80);
         incidentTimeCodeColumn.setCellValueFactory(param -> param.getValue().gameIncidentTimecodeProperty());
         tableView.getColumns().add(incidentTimeCodeColumn);
         extractors.put(incidentTimeCodeColumn, ModerationReportFX::getGameIncidentTimecode);
@@ -1951,64 +2133,80 @@ public class ViewHelper {
             }
             return game.getId();
         }, o.getValue().gameProperty()));
-        gameColumn.setMinWidth(80);
         tableView.getColumns().add(gameColumn);
         extractors.put(gameColumn, reportFx -> reportFx.getGame() == null ? null : reportFx.getGame().getId());
 
-        if (onChatLog != null) {
-            TableColumn<ModerationReportFX, ModerationReportFX> chatLogColumn = new TableColumn<>("Replay");
-            chatLogColumn.setCellValueFactory(param -> new SimpleObjectProperty<>(param.getValue()));
-            chatLogColumn.setCellFactory(param -> new TableCell<>() {
-
-                @Override
-                protected void updateItem(ModerationReportFX item, boolean empty) {
-                    super.updateItem(item, empty);
-                    if (!empty && item != null && item.getGame() != null) {
-                        Button button = new Button("Load chat log");
-                        button.setOnMouseClicked(event -> onChatLog.accept(item));
-                        setGraphic(button);
-                        return;
-                    }
-                    setGraphic(null);
-                }
-            });
-            chatLogColumn.setMinWidth(120);
-            tableView.getColumns().add(chatLogColumn);
-        }
+//        if (onChatLog != null) {
+//            TableColumn<ModerationReportFX, ModerationReportFX> chatLogColumn = new TableColumn<>("Replay");
+//            chatLogColumn.setCellValueFactory(param -> new SimpleObjectProperty<>(param.getValue()));
+//            chatLogColumn.setCellFactory(param -> new TableCell<>() {
+//
+//                @Override
+//                protected void updateItem(ModerationReportFX item, boolean empty) {
+//                    super.updateItem(item, empty);
+//                    if (!empty && item != null && item.getGame() != null) {
+//                        Button button = new Button("Load chat log");
+//                        button.setOnMouseClicked(event -> onChatLog.accept(item));
+//                        setGraphic(button);
+//                        return;
+//                    }
+//                    setGraphic(null);
+//                }
+//            });
+//            chatLogColumn.setMinWidth(120);
+//            tableView.getColumns().add(chatLogColumn);
+//        }
 
         TableColumn<ModerationReportFX, String> privateNoteColumn = new TableColumn<>("Private Notice");
-        privateNoteColumn.setMinWidth(150);
+        privateNoteColumn.setMinWidth(180);
         privateNoteColumn.setCellValueFactory(param -> param.getValue().moderatorPrivateNoteProperty());
         tableView.getColumns().add(privateNoteColumn);
         extractors.put(privateNoteColumn, ModerationReportFX::getModeratorPrivateNote);
 
-        TableColumn<ModerationReportFX, String> moderatorPrivateNoticeColumn = new TableColumn<>("Public Note");
-        moderatorPrivateNoticeColumn.setMinWidth(180);
-        moderatorPrivateNoticeColumn.setCellValueFactory(param -> param.getValue().moderatorNoticeProperty());
-        tableView.getColumns().add(moderatorPrivateNoticeColumn);
-        extractors.put(moderatorPrivateNoticeColumn, ModerationReportFX::getModeratorNotice);
+        privateNoteColumn.setCellFactory(column -> {
+            TableCell<ModerationReportFX, String> cell = new TableCell<>();
+            Text text = new Text();
+            cell.setGraphic(text);
+            text.wrappingWidthProperty().bind(privateNoteColumn.widthProperty().subtract(5));
+            text.textProperty().bind(cell.itemProperty());
+            return cell;
+        });
 
-        TableColumn<ModerationReportFX, String> lastModeratorColumn = new TableColumn<>("Last Moderator");
-        lastModeratorColumn.setCellValueFactory(o -> Bindings.createStringBinding(() -> {
-            PlayerFX lastModerator = o.getValue().getLastModerator();
-            if (lastModerator == null) {
-                return "null";
-            }
-            return lastModerator.getRepresentation();
-        }, o.getValue().lastModeratorProperty()));
-        lastModeratorColumn.setMinWidth(150);
-        tableView.getColumns().add(lastModeratorColumn);
-        extractors.put(lastModeratorColumn, reportFx -> reportFx.getLastModerator() == null ? null : reportFx.getLastModerator().getLogin());
+//        TableColumn<ModerationReportFX, String> moderatorPrivateNoticeColumn = new TableColumn<>("Public Note");
+//        moderatorPrivateNoticeColumn.setMinWidth(180);
+//        moderatorPrivateNoticeColumn.setCellValueFactory(param -> param.getValue().moderatorNoticeProperty());
+//        tableView.getColumns().add(moderatorPrivateNoticeColumn);
+//        extractors.put(moderatorPrivateNoticeColumn, ModerationReportFX::getModeratorNotice);
+//
+//        moderatorPrivateNoticeColumn.setCellFactory(column -> {
+//            TableCell<ModerationReportFX, String> cell = new TableCell<>();
+//            Text text = new Text();
+//            cell.setGraphic(text);
+//            text.wrappingWidthProperty().bind(moderatorPrivateNoticeColumn.widthProperty().subtract(5));
+//            text.textProperty().bind(cell.itemProperty());
+//            return cell;
+//        });
+//
+//        TableColumn<ModerationReportFX, String> lastModeratorColumn = new TableColumn<>("Last Moderator");
+//        lastModeratorColumn.setCellValueFactory(o -> Bindings.createStringBinding(() -> {
+//            PlayerFX lastModerator = o.getValue().getLastModerator();
+//            if (lastModerator == null) {
+//                return "null";
+//            }
+//            return lastModerator.getRepresentation();
+//        }, o.getValue().lastModeratorProperty()));
+//        lastModeratorColumn.setMinWidth(150);
+//        tableView.getColumns().add(lastModeratorColumn);
+//        extractors.put(lastModeratorColumn, reportFx -> reportFx.getLastModerator() == null ? null : reportFx.getLastModerator().getLogin());
 
-        TableColumn<ModerationReportFX, OffsetDateTime> createTimeColumn = new TableColumn<>("Create time");
-        createTimeColumn.setMinWidth(150);
-        createTimeColumn.setCellValueFactory(param -> param.getValue().createTimeProperty());
-        tableView.getColumns().add(createTimeColumn);
-        extractors.put(createTimeColumn, ModerationReportFX::getCreateTime);
+//        TableColumn<ModerationReportFX, OffsetDateTime> createTimeColumn = new TableColumn<>("Create time");
+//        createTimeColumn.setMinWidth(150);
+//        createTimeColumn.setCellValueFactory(param -> param.getValue().createTimeProperty());
+//        tableView.getColumns().add(createTimeColumn);
+//        extractors.put(createTimeColumn, ModerationReportFX::getCreateTime);
 
         applyCopyContextMenus(tableView, extractors);
     }
-
 
     public static void buildQuestionTable(TableView<VotingQuestionFX> tableView, VotingService votingService, Logger log, Runnable refresh) {
         tableView.setEditable(true);
@@ -2292,6 +2490,8 @@ public class ViewHelper {
 
         alert.showAndWait();
     }
+
+
 
     @SuppressWarnings("rawtypes")
     public static void copySelectionToClipboard(final TableView<?> table) {

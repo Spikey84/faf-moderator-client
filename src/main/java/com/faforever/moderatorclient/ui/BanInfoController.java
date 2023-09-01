@@ -5,15 +5,12 @@ import com.faforever.commons.api.dto.BanInfo;
 import com.faforever.commons.api.dto.BanLevel;
 import com.faforever.moderatorclient.api.FafApiCommunicationService;
 import com.faforever.moderatorclient.api.domain.BanService;
-import com.faforever.moderatorclient.mapstruct.PlayerMapper;
 import com.faforever.moderatorclient.ui.domain.BanInfoFX;
 import com.faforever.moderatorclient.ui.domain.ModerationReportFX;
 import com.faforever.moderatorclient.ui.domain.PlayerFX;
+import com.faforever.moderatorclient.mapstruct.PlayerMapper;
 import javafx.fxml.FXML;
-import javafx.scene.control.Button;
-import javafx.scene.control.Label;
-import javafx.scene.control.RadioButton;
-import javafx.scene.control.TextField;
+import javafx.scene.control.*;
 import javafx.scene.layout.GridPane;
 import javafx.scene.layout.Pane;
 import javafx.scene.layout.VBox;
@@ -27,6 +24,9 @@ import org.springframework.context.annotation.Scope;
 import org.springframework.stereotype.Component;
 import org.springframework.util.Assert;
 
+import java.io.File;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
@@ -36,6 +36,10 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.function.Consumer;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+import static com.faforever.moderatorclient.ui.MainController.CONFIGURATION_FOLDER;
 
 
 @Component
@@ -46,7 +50,6 @@ public class BanInfoController implements Controller<Pane> {
     private final FafApiCommunicationService fafApi;
     private final BanService banService;
     private final PlayerMapper playerMapper;
-
     public GridPane root;
     public TextField affectedUserTextField;
     public TextField banAuthorTextField;
@@ -68,6 +71,8 @@ public class BanInfoController implements Controller<Pane> {
     public TextField revocationTimeTextField;
     public VBox revokeOptions;
     public TextField reportIdTextField;
+    public ToggleGroup banDuration;
+    public Button templateButtonPermanentBan;
 
     @Getter
     private BanInfoFX banInfo;
@@ -90,6 +95,17 @@ public class BanInfoController implements Controller<Pane> {
     @FXML
     public void initialize() {
         banIsRevokedNotice.managedProperty().bind(banIsRevokedNotice.visibleProperty());
+        banReasonTextField.textProperty().addListener((observable, oldValue, newValue) -> {
+            Pattern pattern = Pattern.compile("(\\d+)\\s+day\\s+ban");
+            Matcher matcher = pattern.matcher(banReasonTextField.getText());
+            if (matcher.find()) {
+                String numDays = matcher.group(1);
+                log.debug("Detected number before 'day ban': " + numDays);
+                banDaysTextField.setText(numDays);
+            } else {
+                log.debug("No number before 'day ban' found");
+            }
+        });
     }
 
     public void onRevokeTimeTextChanged() {
@@ -109,6 +125,7 @@ public class BanInfoController implements Controller<Pane> {
 
             affectedUserTextField.setText(banInfo.getPlayer().representationProperty().get());
             Optional.ofNullable(banInfo.getAuthor()).ifPresent(author -> banAuthorTextField.setText(author.representationProperty().get()));
+
             banReasonTextField.setText(banInfo.getReason());
 
             revocationReasonTextField.setDisable(false);
@@ -122,22 +139,20 @@ public class BanInfoController implements Controller<Pane> {
                 banIsRevokedNotice.setVisible(true);
                 revocationReasonTextField.setText(banInfo.getRevokeReason());
                 revocationTimeTextField.setText(banInfo.getRevokeTime().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME));
+                log.debug(banInfo.getRevokeTime().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME));
                 revocationAuthorTextField.setText(banInfo.getRevokeAuthor() == null ? "" : banInfo.getRevokeAuthor().getLogin());
             } else {
                 revocationTimeTextField.setText(OffsetDateTime.now().atZoneSameInstant(ZoneOffset.UTC).format(DateTimeFormatter.ISO_LOCAL_DATE_TIME));
             }
-
-            chatOnlyBanRadioButton.setSelected(banInfo.getLevel() == BanLevel.CHAT);
-            vaultBanRadioButton.setSelected(banInfo.getLevel() == BanLevel.VAULT);
+            // chat and vault ban are not working
+            //chatOnlyBanRadioButton.setSelected(banInfo.getLevel() == BanLevel.CHAT);
+            //vaultBanRadioButton.setSelected(banInfo.getLevel() == BanLevel.VAULT);
             globalBanRadioButton.setSelected(banInfo.getLevel() == BanLevel.GLOBAL);
-
             ModerationReportFX moderationReportFx = banInfo.getModerationReport();
             if (moderationReportFx != null) {
                 reportIdTextField.setText(moderationReportFx.getId());
             }
-
         } else {
-
             PlayerFX player = banInfo.getPlayer();
             if (player != null) {
                 affectedUserTextField.setText(player.representationProperty().get());
@@ -165,8 +180,9 @@ public class BanInfoController implements Controller<Pane> {
 
         if (forNoOfDaysBanRadioButton.isSelected())
             banInfo.setExpiresAt(OffsetDateTime.now(ZoneOffset.UTC).plusDays(Long.parseLong(banDaysTextField.getText())));
-        else if (temporaryBanRadioButton.isSelected())
+        else if (temporaryBanRadioButton.isSelected()) {
             banInfo.setExpiresAt(OffsetDateTime.of(LocalDateTime.parse(untilTextField.getText(), DateTimeFormatter.ISO_LOCAL_DATE_TIME), ZoneOffset.UTC));
+        }
         else {
             banInfo.setExpiresAt(null);
         }
@@ -253,10 +269,8 @@ public class BanInfoController implements Controller<Pane> {
             ViewHelper.errorDialog("Validation failed",
                     String.join("\n", validationErrors)
             );
-
             return false;
         }
-
         return true;
     }
 
@@ -319,9 +333,7 @@ public class BanInfoController implements Controller<Pane> {
             untilDateTimeValidateLabel.setText("");
             return;
         }
-
         try {
-            LocalDateTime dateTime = LocalDateTime.parse(untilTextField.getText(), DateTimeFormatter.ISO_LOCAL_DATE_TIME);
             untilDateTimeValidateLabel.setText("valid");
             untilDateTimeValidateLabel.setStyle("-fx-text-fill: green");
         } catch (DateTimeParseException e) {
@@ -335,4 +347,24 @@ public class BanInfoController implements Controller<Pane> {
         reportIdTextField.setDisable(true);
     }
 
+    private void loadBanReasonTemplate(String fileName, RadioButton radioButton) {
+        String filePath = CONFIGURATION_FOLDER + File.separator+ fileName + ".txt";
+        File f = new File(filePath);
+        if (f.exists() && !f.isDirectory()) {
+            try {
+                String banReason = Files.readString(Paths.get(filePath));
+                banReasonTextField.setText(banReason);
+                radioButton.setSelected(true);
+                log.debug("Successfully loaded " + fileName + " file.");
+            } catch (Exception e) {
+                log.debug("Error reading " + fileName + " file: " + e.getMessage());
+            }
+        } else {
+            log.debug("File not found: " + filePath);
+        }
+    }
+
+    public void templateButtonPermanentBan() {
+        loadBanReasonTemplate("templateButtonPermanentBan", permanentBanRadioButton);
+    }
 }

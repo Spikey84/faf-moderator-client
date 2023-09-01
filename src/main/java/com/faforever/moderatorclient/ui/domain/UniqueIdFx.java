@@ -37,8 +37,11 @@ public class UniqueIdFx extends AbstractEntityFX {
 
 
     public String getHash() {
+        //System.out.println(hash.get());
         return hash.get();
     }
+
+
 
     public void setHash(String hash) {
         this.hash.set(hash);
@@ -49,7 +52,12 @@ public class UniqueIdFx extends AbstractEntityFX {
     }
 
     public String getUuid() {
+        //System.out.println("getUuid START");
+        //System.out.println(uuid.get());
+        //System.out.println("getUuid END");
+
         return uuid.get();
+
     }
 
     public void setUuid(String uuid) {

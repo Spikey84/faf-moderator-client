@@ -55,10 +55,15 @@ public class MapTableItemAdapter {
     }
 
     public String isHidden() {
+
         return isMapVersion() ? (mapVersion.getHidden() ? "yes" : "no") : null;
     }
 
     public URL getThumbnailUrlLarge() {
         return isMapVersion() ? mapVersion.getThumbnailUrlLarge() : null;
+    }
+
+    public MapTableItemAdapter getThis() {
+        return this;
     }
 }

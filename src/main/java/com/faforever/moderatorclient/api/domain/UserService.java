@@ -14,14 +14,10 @@ import com.faforever.moderatorclient.mapstruct.FeaturedModMapper;
 import com.faforever.moderatorclient.mapstruct.PlayerMapper;
 import com.faforever.moderatorclient.mapstruct.TeamkillMapper;
 import com.faforever.moderatorclient.mapstruct.UserNoteMapper;
-import com.faforever.moderatorclient.ui.domain.FeaturedModFX;
-import com.faforever.moderatorclient.ui.domain.PlayerFX;
-import com.faforever.moderatorclient.ui.domain.TeamkillFX;
-import com.faforever.moderatorclient.ui.domain.UserNoteFX;
+import com.faforever.moderatorclient.ui.domain.*;
 import lombok.extern.slf4j.Slf4j;
 import org.jetbrains.annotations.NotNull;
 import org.springframework.stereotype.Service;
-
 import java.util.Collections;
 import java.util.List;
 
@@ -33,7 +29,6 @@ public class UserService {
     private final FeaturedModMapper featuredModMapper;
     private final UserNoteMapper userNoteMapper;
     private final TeamkillMapper teamkillMapper;
-
 
     public UserService(FafApiCommunicationService fafApi, PlayerMapper playerMapper, FeaturedModMapper featuredModMapper, UserNoteMapper userNoteMapper, TeamkillMapper teamkillMapper) {
         this.fafApi = fafApi;
@@ -72,23 +67,23 @@ public class UserService {
         ElideNavigatorOnCollection<Player> navigator = ElideNavigator.of(Player.class)
                 .collection()
                 .addSortingRule("id", false)
-                .pageSize(50);
+                .pageSize(1000);
         addModeratorIncludes(navigator);
 
-        List<Player> result = fafApi.getPage(Player.class, navigator, 100, 1, Collections.emptyMap());
+        List<Player> result = fafApi.getPage(Player.class, navigator, 1000, 1, Collections.emptyMap());
         log.trace("found {} users", result.size());
         return playerMapper.mapToFx(result);
     }
 
     public List<PlayerFX> findUsersByAttribute(@NotNull String attribute, @NotNull String pattern) {
+
         log.debug("Searching for player by attribute '{}' with pattern: {}", attribute, pattern);
         ElideNavigatorOnCollection<Player> navigator = ElideNavigator.of(Player.class)
                 .collection()
                 .setFilter(ElideNavigator.qBuilder().string(attribute).eq(pattern));
         addModeratorIncludes(navigator);
-
         List<Player> result = fafApi.getAll(Player.class, navigator);
-        log.trace("found {} users", result.size());
+
         return playerMapper.mapToFx(result);
     }
 

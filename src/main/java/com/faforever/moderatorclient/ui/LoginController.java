@@ -1,5 +1,4 @@
 package com.faforever.moderatorclient.ui;
-
 import com.faforever.moderatorclient.api.FafApiCommunicationService;
 import com.faforever.moderatorclient.api.FafUserCommunicationService;
 import com.faforever.moderatorclient.api.TokenService;
@@ -18,11 +17,18 @@ import org.apache.commons.lang3.RandomStringUtils;
 import org.apache.http.NameValuePair;
 import org.apache.http.client.utils.URLEncodedUtils;
 import org.springframework.context.event.EventListener;
+import org.springframework.security.oauth2.common.OAuth2AccessToken;
 import org.springframework.stereotype.Component;
+import org.w3c.dom.Document;
+import org.w3c.dom.Element;
 
+import java.io.File;
+import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.text.MessageFormat;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
@@ -31,10 +37,17 @@ import java.util.concurrent.CompletableFuture;
 @Slf4j
 @RequiredArgsConstructor
 public class LoginController implements Controller<Pane> {
+    static {
+
+        System.setProperty("java.awt.headless", "false");
+    }
+
     private final ApplicationProperties applicationProperties;
     private final FafApiCommunicationService fafApiCommunicationService;
     private final FafUserCommunicationService fafUserCommunicationService;
     private final TokenService tokenService;
+    private OAuth2AccessToken tokenCache;
+
 
     public VBox root;
     public ComboBox<String> environmentComboBox;
@@ -49,23 +62,82 @@ public class LoginController implements Controller<Pane> {
     }
 
     @FXML
-    public void initialize() {
-        applicationProperties.getEnvironments().forEach(
-                (key, environmentProperties) -> environmentComboBox.getItems().add(key)
+    public void initialize() throws IOException {
+        applicationProperties.getEnvironments().forEach((key, environmentProperties) ->
+                environmentComboBox.getItems().add(key)
         );
-
         reloadLogin();
-
         environmentComboBox.getSelectionModel().select(0);
-
-        loginWebView.getEngine().getLoadWorker().runningProperty().addListener(((observable, oldValue, newValue) -> {
+        loginWebView.getEngine().getLoadWorker().runningProperty().addListener((observable, oldValue, newValue) -> {
             if (!newValue) {
+                String nameOrEmail = null;
+                String password = null;
+                try {
+                    String homeDirectory = System.getProperty("user.home");
+                    String filePath = homeDirectory + File.separator + "account_credentials_mordor.txt";
+                    File file = new File(filePath);
+                    if (!file.exists()) {
+                        try {
+                            boolean created = file.createNewFile();
+                            if (created) {
+                                log.debug("Created account_credentials_mordor.txt file.");
+                            }
+                        } catch (IOException e) {
+                            log.debug("Error creating account_credentials_mordor.txt file: " + e.getMessage());
+                        }
+                    }
+
+                    List<String> accountCredentials = Files.readAllLines(Paths.get(filePath));
+                    if (!accountCredentials.get(0).isEmpty()) {
+                        nameOrEmail = accountCredentials.get(0);
+                        password = accountCredentials.get(1);
+                    }
+                } catch (IOException e) {
+                    log.debug(String.valueOf(e));
+                }
+
+                if (nameOrEmail != null) {
+                    try {
+                        if (loginWebView.getEngine().executeScript("javascript:document.getElementById('form-header');") != null) {
+                            loginWebView.getEngine().executeScript(String.format("javascript:document.getElementsByName('usernameOrEmail')[0].value = '%s'", nameOrEmail));
+                            loginWebView.getEngine().executeScript(String.format("javascript:document.getElementsByName('password')[0].value = '%s'", password));
+                            log.debug("[autologin] Account credentials were entered.");
+                            loginWebView.getEngine().executeScript("javascript:document.querySelector('input[type=\"submit\"][value=\"Log in\"]').click()");
+                            log.debug("[autologin] Log in button was automatically clicked.");
+                        }
+                    } catch (Exception error) {
+                        log.debug(String.valueOf(error));
+                        try {
+                            Thread.sleep(3000);
+                        } catch (InterruptedException e) {
+                            throw new RuntimeException(e);
+                        }
+                    }
+                }
+
+                try {
+                    if (tokenCache == null || tokenCache.isExpired()) {
+                        Document doc = loginWebView.getEngine().getDocument();
+                        Element element = doc.getElementById("denial-form");
+                        if (element != null) {
+                            loginWebView.getEngine().executeScript("javascript:document.querySelector('input[type=\"submit\"][value=\"Authorize\"]').click()");
+                            log.debug("[autologin] Authorize button was automatically clicked.");
+                        }
+                    }
+                }
+                 catch (NullPointerException nullPointerException) {
+                    log.debug("Catch: " + nullPointerException);
+                } catch (Exception error) {
+                    log.debug(String.valueOf(error));
+                }
+
                 resetPageFuture.complete(null);
             }
-        }));
+        });
 
         loginWebView.getEngine().locationProperty().addListener((observable, oldValue, newValue) -> {
             List<NameValuePair> params;
+
             try {
                 params = URLEncodedUtils.parse(new URI(newValue), StandardCharsets.UTF_8);
             } catch (URISyntaxException e) {
@@ -113,14 +185,17 @@ public class LoginController implements Controller<Pane> {
     }
 
     public void reloadLogin() {
+        log.debug("reloadLogin");
         resetPageFuture = new CompletableFuture<>();
         resetPageFuture.thenAccept(aVoid -> Platform.runLater(this::loadLoginPage));
+
         if (!loginWebView.getEngine().getLoadWorker().isRunning()) {
             resetPageFuture.complete(null);
         }
     }
 
-    private void loadLoginPage() {
+    private void loadLoginPage(){
+        loginWebView.getEngine().setJavaScriptEnabled(true);
         loginWebView.getEngine().load(getHydraUrl());
     }
 
