@@ -1,9 +1,10 @@
 package com.faforever.moderatorclient.config;
 
+import jakarta.validation.constraints.NotBlank;
 import lombok.Data;
 import org.springframework.validation.annotation.Validated;
 
-import javax.validation.constraints.NotBlank;
+
 
 @Validated
 @Data
