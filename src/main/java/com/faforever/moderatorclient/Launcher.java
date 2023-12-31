@@ -8,3 +8,5 @@ public class Launcher {
         FafModeratorClientApplication.applicationMain(args);
     }
 }
+
+

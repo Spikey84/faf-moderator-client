@@ -92,6 +92,7 @@ public class ModerationReportController implements Controller<Region> {
     public Region root;
     public ChoiceBox<ChooseableStatus> statusChoiceBox;
     public TextField playerNameFilterTextField;
+    public TextField searchDescription;
     public TableView<ModerationReportFX> reportTableView;
     public Button editReportButton;
     public TableView<PlayerFX> reportedPlayerTableView;
@@ -576,6 +577,7 @@ public class ModerationReportController implements Controller<Region> {
         ViewHelper.buildModerationReportTableView(reportTableView, sortedItemList, this::showChatLog, this::markCompletedButton, this::markDiscardedButton);
         statusChoiceBox.getSelectionModel().selectedItemProperty().addListener(observable -> renewFilter());
         playerNameFilterTextField.textProperty().addListener(observable -> renewFilter());
+        searchDescription.textProperty().addListener(observable -> renewFilter());
         reportTableView.getSelectionModel()
                 .selectedItemProperty()
                 .addListener((observable, oldValue, newValue) -> {
@@ -657,6 +659,11 @@ public class ModerationReportController implements Controller<Region> {
                 if (!(reportedPlayerPositive || reporterPositive)) {
                     return false;
                 }
+            }
+
+            String descriptionFilter = searchDescription.getText().toLowerCase(Locale.ROOT);
+            if (!Strings.isNullOrEmpty(descriptionFilter)) {
+                if (!moderationReportFx.getReportDescription().toLowerCase(Locale.ROOT).contains(descriptionFilter)) return false;
             }
             ChooseableStatus selectedItemChoiceBox = statusChoiceBox.getSelectionModel().getSelectedItem();
             if (selectedItemChoiceBox.toString().equals("ALL")) return true;

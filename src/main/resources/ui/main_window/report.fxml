@@ -50,6 +50,8 @@
             </CheckBox>
             <Separator prefHeight="10" />
             <Button fx:id="StartReplayButton" maxWidth="120.0" minWidth="120.0" mnemonicParsing="false" onAction="#onStartReplay" prefWidth="120.0" text="Start Replay" />
+         <Text strokeType="OUTSIDE" strokeWidth="0.0" text="Search" />
+         <TextField fx:id="searchDescription" />
         </VBox>
         <TableView fx:id="reportTableView" maxHeight="1.7976931348623157E308" maxWidth="1200.0" prefWidth="600.0" HBox.hgrow="ALWAYS" />
       <VBox prefHeight="200.0" style="-fx-background-color: #373e43;">
